@@ -1,0 +1,166 @@
+MYAGENT-MIB DEFINITIONS ::= BEGIN
+
+IMPORTS
+    MODULE-IDENTITY, OBJECT-TYPE, enterprises,
+    Integer32, NOTIFICATION-TYPE
+        FROM SNMPv2-SMI
+    DisplayString
+        FROM SNMPv2-TC
+    MODULE-COMPLIANCE, OBJECT-GROUP, NOTIFICATION-GROUP
+        FROM SNMPv2-CONF;
+
+myAgentMIB MODULE-IDENTITY
+    LAST-UPDATED "202511110000Z"
+    ORGANIZATION "Zaragoza Network Management Research Group"
+    CONTACT-INFO
+        "Email: alesanco@unizar.es
+         Postal: University of Zaragoza
+                 Spain"
+    DESCRIPTION
+        "MIB module for custom SNMP agent with CPU monitoring.
+         This MIB defines scalar objects for network management
+         contact information and CPU monitoring with threshold-based
+         alerting capabilities."
+    REVISION "202511110000Z"
+    DESCRIPTION
+        "Initial version of MYAGENT-MIB"
+    ::= { enterprises 28308 }
+
+-- Top-level structure
+myAgentObjects       OBJECT IDENTIFIER ::= { myAgentMIB 1 }
+myAgentNotifications OBJECT IDENTIFIER ::= { myAgentMIB 2 }
+myAgentConformance   OBJECT IDENTIFIER ::= { myAgentMIB 3 }
+
+-- ========================================
+-- Scalar Objects
+-- ========================================
+
+manager OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..255))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Name of the network manager responsible for this device.
+         This object can be read and modified by authorized users
+         to maintain accurate contact information."
+    DEFVAL      { "NetworkAdmin" }
+    ::= { myAgentObjects 1 }
+
+managerEmail OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE (0..255))
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "Email address of the network manager. This address will
+         receive notifications when CPU usage exceeds the configured
+         threshold. Must be a valid email address format."
+    DEFVAL      { "[email protected]" }
+    ::= { myAgentObjects 2 }
+
+cpuUsage OBJECT-TYPE
+    SYNTAX      Integer32 (0..100)
+    UNITS       "percent"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Current CPU usage percentage. This value is automatically
+         updated every 5 seconds by monitoring the system CPU load.
+         The value represents the average CPU utilization across
+         all cores. Range: 0-100 percent."
+    ::= { myAgentObjects 3 }
+
+cpuThreshold OBJECT-TYPE
+    SYNTAX      Integer32 (0..100)
+    UNITS       "percent"
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION
+        "CPU usage threshold for generating alerts. When cpuUsage
+         exceeds this threshold value, the agent will send an SNMP
+         TRAP notification and an email to the configured manager.
+         Notifications are edge-triggered: they are sent only when
+         crossing from below to above the threshold, not continuously
+         while above it. Valid range: 0-100 percent."
+    DEFVAL      { 80 }
+    ::= { myAgentObjects 4 }
+
+-- ========================================
+-- Notifications
+-- ========================================
+
+cpuThresholdExceeded NOTIFICATION-TYPE
+    OBJECTS     { cpuUsage, cpuThreshold, managerEmail }
+    STATUS      current
+    DESCRIPTION
+        "This notification is sent when the CPU usage crosses above
+         the configured threshold. It is edge-triggered, meaning it
+         fires only on the upward crossing of the threshold boundary,
+         not while continuously above it.
+         
+         The notification includes:
+         - cpuUsage: Current CPU percentage that triggered the alert
+         - cpuThreshold: The threshold value that was exceeded
+         - managerEmail: Destination email for notification
+         
+         An email is also sent to managerEmail concurrently with
+         this SNMP TRAP."
+    ::= { myAgentNotifications 1 }
+
+-- ========================================
+-- Conformance Information
+-- ========================================
+
+myAgentCompliances OBJECT IDENTIFIER ::= { myAgentConformance 1 }
+myAgentGroups      OBJECT IDENTIFIER ::= { myAgentConformance 2 }
+
+-- Compliance Statement
+myAgentCompliance MODULE-COMPLIANCE
+    STATUS      current
+    DESCRIPTION
+        "The compliance statement for SNMP entities which
+         implement the MYAGENT-MIB."
+    MODULE  -- this module
+        MANDATORY-GROUPS {
+            myAgentScalarGroup,
+            myAgentNotificationGroup
+        }
+        
+        OBJECT manager
+            MIN-ACCESS  read-only
+            DESCRIPTION
+                "Write access is not required for basic compliance."
+        
+        OBJECT managerEmail
+            MIN-ACCESS  read-only
+            DESCRIPTION
+                "Write access is not required for basic compliance."
+        
+        OBJECT cpuThreshold
+            MIN-ACCESS  read-only
+            DESCRIPTION
+                "Write access is not required for basic compliance."
+    ::= { myAgentCompliances 1 }
+
+-- Units of Conformance
+myAgentScalarGroup OBJECT-GROUP
+    OBJECTS     {
+        manager,
+        managerEmail,
+        cpuUsage,
+        cpuThreshold
+    }
+    STATUS      current
+    DESCRIPTION
+        "A collection of scalar objects for MYAGENT-MIB."
+    ::= { myAgentGroups 1 }
+
+myAgentNotificationGroup NOTIFICATION-GROUP
+    NOTIFICATIONS {
+        cpuThresholdExceeded
+    }
+    STATUS      current
+    DESCRIPTION
+        "A collection of notifications for MYAGENT-MIB."
+    ::= { myAgentGroups 2 }
+
+END
