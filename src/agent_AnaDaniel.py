@@ -1,14 +1,3 @@
-'''
-Mini SNMP Agent - Custom Agent with CPU Monitoring
-Implements:
-- 4 scalar objects (manager, managerEmail, cpuUsage, cpuThreshold)
-- CPU monitoring with asyncio/psutil every 5 seconds
-- TRAP + email on threshold crossing (edge-triggered)
-- GET, GETNEXT, SET with full validation
-- JSON persistence
-- VACM with 'public' (RO) and 'private' (RW)
-'''
-
 import asyncio
 import json
 import os
@@ -23,6 +12,7 @@ from pysnmp.entity.rfc3413 import cmdrsp, context, ntforg
 from pysnmp.carrier.asyncio.dgram import udp
 from pysnmp.proto.api import v2c
 from pysnmp.proto import rfc1902, rfc1905
+
 
 # ===========================
 # Configuration Constants
@@ -55,6 +45,7 @@ ORDERED_OIDS = [
     OID_CPU_USAGE,
     OID_CPU_THRESHOLD
 ]
+
 
 # ===========================
 # Data Store and State
@@ -126,8 +117,10 @@ class MibDataStore:
         '''Get system uptime in TimeTicks (hundredths of seconds)'''
         return int((time.time() - self.start_time) * 100)
 
+
 # Global data store instance
 mib_store = MibDataStore()
+
 
 # ===========================
 # SNMP Value Conversion
@@ -143,6 +136,7 @@ def python_to_snmp(key, value):
         return v2c.Integer(int(value))
     return v2c.Null()
 
+
 def snmp_to_python(key, snmp_value):
     '''Convert SNMP value to Python type'''
     if key in ['manager', 'managerEmail']:
@@ -156,6 +150,7 @@ def snmp_to_python(key, snmp_value):
         else:
             raise ValueError('Expected Integer')
     raise ValueError('Unknown key')
+
 
 # ===========================
 # Command Responders
@@ -384,6 +379,7 @@ def send_trap(snmpEngine, cpu_usage, cpu_threshold):
         varBinds
     )
 
+
 def send_email(cpu_usage, cpu_threshold):
     '''Send email notification via SMTP'''
     try:
@@ -393,14 +389,18 @@ def send_email(cpu_usage, cpu_threshold):
         msg = MIMEText(f'''
 Alert: CPU Usage Threshold Exceeded
 
+
 Dear {manager},
+
 
 The CPU usage has exceeded the configured threshold:
 - Current CPU Usage: {cpu_usage}%
 - Configured Threshold: {cpu_threshold}%
 - Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
+
 This is an automated notification from the SNMP Mini Agent.
+
 
 Best regards,
 SNMP Monitoring System
@@ -438,7 +438,7 @@ async def cpu_sampler(snmpEngine):
             if cpu_usage > threshold and not mib_store.above_threshold:
                 # Crossed threshold going up
                 mib_store.above_threshold = True
-                print(f'\\nTHRESHOLD CROSSED: CPU {cpu_usage}% > {threshold}%')
+                print(f'\nTHRESHOLD CROSSED: CPU {cpu_usage}% > {threshold}%')
                 
                 # Send TRAP and email
                 send_trap(snmpEngine, cpu_usage, threshold)
@@ -447,13 +447,13 @@ async def cpu_sampler(snmpEngine):
             elif cpu_usage <= threshold and mib_store.above_threshold:
                 # Crossed back down
                 mib_store.above_threshold = False
-                print(f'\\nCPU back below threshold: {cpu_usage}% <= {threshold}%')
+                print(f'\nCPU back below threshold: {cpu_usage}% <= {threshold}%')
             
             # Log current status
-            print(f'CPU: {cpu_usage}% (threshold: {threshold}%)', end='\\r')
+            print(f'CPU: {cpu_usage}% (threshold: {threshold}%)', end='\r')
             
         except Exception as e:
-            print(f'\\nError in cpu_sampler: {e}')
+            print(f'\nError in cpu_sampler: {e}')
         
         await asyncio.sleep(5)
 
@@ -466,26 +466,31 @@ def main():
     print('=== Mini SNMP Agent Starting ===')
     print(f'Base OID: {".".join(map(str, BASE_OID))}')
     
+    # ✅ CREAR EL EVENT LOOP PRIMERO (antes de SnmpEngine)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
     # Create SNMP engine
     snmpEngine = engine.SnmpEngine()
     
+    # ✅ USAR LA API MODERNA (snake_case)
     # Transport setup (UDP over IPv4, port 161)
-    config.addTransport(
+    config.add_transport(
         snmpEngine,
-        udp.domainName,
-        udp.UdpTransport().openServerMode(('0.0.0.0', 161))
+        udp.DOMAIN_NAME,
+        udp.UdpTransport().open_server_mode(('0.0.0.0', 161))
     )
     
     # SNMPv2c setup
     # Community 'public' -> read-only (security name: 'public-user')
-    config.addV1System(snmpEngine, 'public-user', 'public')
+    config.add_v1_system(snmpEngine, 'public-user', 'public')
     
     # Community 'private' -> read-write (security name: 'private-user')
-    config.addV1System(snmpEngine, 'private-user', 'private')
+    config.add_v1_system(snmpEngine, 'private-user', 'private')
     
     # VACM configuration
     # Allow read access for public-user
-    config.addVacmUser(
+    config.add_vacm_user(
         snmpEngine,
         2,  # SNMPv2c
         'public-user',
@@ -495,7 +500,7 @@ def main():
     )
     
     # Allow read-write access for private-user
-    config.addVacmUser(
+    config.add_vacm_user(
         snmpEngine,
         2,  # SNMPv2c
         'private-user',
@@ -504,17 +509,17 @@ def main():
         writeSubTree=BASE_OID
     )
     
-    # TRAP target configuration
-    config.addTargetParams(snmpEngine, 'trap-params', 'public-user', 'noAuthNoPriv', 1)
-    config.addTargetAddr(
+    # ✅ TRAP target configuration (API moderna)
+    config.add_target_parameters(snmpEngine, 'trap-params', 'public-user', 'noAuthNoPriv', 1)
+    config.add_target_address(
         snmpEngine,
         'trap-target',
-        udp.domainName,
+        udp.DOMAIN_NAME,
         (TRAP_HOST, TRAP_PORT),
         'trap-params',
         tagList='trap-tag'
     )
-    config.addNotificationTarget(
+    config.add_notification_target(
         snmpEngine,
         'trap-target',
         'trap-filter',
@@ -539,17 +544,14 @@ def main():
     print(f'SMTP server: {SMTP_HOST}:{SMTP_PORT}')
     
     # Start CPU monitoring task
-    loop = asyncio.get_event_loop()
     loop.create_task(cpu_sampler(snmpEngine))
-    
-    # Keep dispatcher running
-    snmpEngine.transportDispatcher.jobStarted(1)
-    
+
+    # Mantén el bucle activo en el hilo principal
     try:
-        print('\\n=== Agent running - Press Ctrl+C to quit ===\\n')
-        snmpEngine.transportDispatcher.runDispatcher()
+        print('\n=== Agent running - Press Ctrl+C to quit ===\n')
+        loop.run_forever()
     except KeyboardInterrupt:
-        print('\\nShutting down...')
+        print('\nShutting down...')
     finally:
         snmpEngine.transportDispatcher.closeDispatcher()
         print('Agent stopped')
