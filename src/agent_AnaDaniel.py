@@ -1,17 +1,17 @@
-import asyncio
-import json
-import os
-import psutil
-import smtplib
-import time
-from email.mime.text import MIMEText
-from datetime import datetime
-
-from pysnmp.entity import engine, config
-from pysnmp.entity.rfc3413 import cmdrsp, context, ntforg
-from pysnmp.carrier.asyncio.dgram import udp
-from pysnmp.proto.api import v2c
-from pysnmp.proto import rfc1902, rfc1905
+# Librerías estándar para SNMP, email, CPU y asyncio
+import asyncio              # Operaciones asincrónicas
+import json                 # Persistencia de datos
+import os                   # Operaciones del sistema
+import psutil               # Monitoreo de CPU
+import smtplib              # Envío de correos
+import time                 # Timestamps
+from email.mime.text import MIMEText  # Formato de correos
+from datetime import datetime          # Fecha/hora
+from pysnmp.entity import engine, config  # Motor SNMP
+from pysnmp.entity.rfc3413 import cmdrsp, context, ntforg  # Responders y TRAPs
+from pysnmp.carrier.asyncio.dgram import udp  # Transporte UDP
+from pysnmp.proto.api import v2c        # Tipos de datos SNMPv2c
+from pysnmp.proto import rfc1902, rfc1905  # RFCs estándar
 
 
 # ===========================
@@ -22,21 +22,21 @@ from pysnmp.proto import rfc1902, rfc1905
 BASE_OID = (1, 3, 6, 1, 3, 28308)
 
 # Object OIDs
-OID_MANAGER = BASE_OID + (1, 1, 0)
-OID_MANAGER_EMAIL = BASE_OID + (1, 2, 0)
-OID_CPU_USAGE = BASE_OID + (1, 3, 0)
-OID_CPU_THRESHOLD = BASE_OID + (1, 4, 0)
+OID_MANAGER = BASE_OID + (1, 1, 0)              # Nombre del gestor
+OID_MANAGER_EMAIL = BASE_OID + (1, 2, 0)        # Email del gestor
+OID_CPU_USAGE = BASE_OID + (1, 3, 0)            # Uso actual de CPU
+OID_CPU_THRESHOLD = BASE_OID + (1, 4, 0)        # Umbral de CPU
 
 # JSON persistence file
 JSON_FILE = 'mib_state.json'
 
 # TRAP destination
-TRAP_HOST = '127.0.0.1'
-TRAP_PORT = 162
+TRAP_HOST = '127.0.0.1'     # Destino de notificaciones SNMP (localhost)
+TRAP_PORT = 162             # Puerto estándar para TRAPs (notificacioens)
 
 # SMTP configuration
-SMTP_HOST = 'localhost'
-SMTP_PORT = 1025
+SMTP_HOST = 'localhost'     # Servidor SMTP local
+SMTP_PORT = 1025            # Puerto SMTP (1025 para testing con smtpd)
 
 # Ordered list of OIDs for GETNEXT
 ORDERED_OIDS = [
@@ -59,12 +59,14 @@ class MibDataStore:
             'cpuUsage': 0,
             'cpuThreshold': 80
         }
-        self.above_threshold = False  # For edge-triggered detection
-        self.start_time = time.time()
+        self.above_threshold = False    # Para detectar cruces de umbral
+        self.start_time = time.time()   # Tiempo de inicio para sysUpTime
         self.load_from_json()
     
     def load_from_json(self):
         '''Load persistent data from JSON file'''
+        # Si existe el archivo, restaura manager, email y threshold
+        # El cpuUsage NO se carga (es dinámico)
         if os.path.exists(JSON_FILE):
             try:
                 with open(JSON_FILE, 'r') as f:
@@ -78,7 +80,8 @@ class MibDataStore:
                 print(f'Error loading JSON: {e}')
     
     def save_to_json(self):
-        '''Persist data to JSON file'''
+        '''Save data configuration to JSON file'''
+        # Persiste solo: manager, managerEmail, cpuThreshold
         try:
             with open(JSON_FILE, 'w') as f:
                 persistent_data = {
@@ -128,6 +131,8 @@ mib_store = MibDataStore()
 
 def python_to_snmp(key, value):
     '''Convert Python value to SNMP type'''
+    # 'manager' → OctetString (UTF-8 encoding)
+    # 'cpuThreshold' → Integer32
     if key in ['manager', 'managerEmail']:
         # DisplayString -> OctetString (UTF-8)
         return v2c.OctetString(str(value).encode('utf-8'))
@@ -139,6 +144,8 @@ def python_to_snmp(key, value):
 
 def snmp_to_python(key, snmp_value):
     '''Convert SNMP value to Python type'''
+    # OctetString → str
+    # Integer → int
     if key in ['manager', 'managerEmail']:
         if isinstance(snmp_value, v2c.OctetString):
             return bytes(snmp_value).decode('utf-8')
@@ -158,8 +165,12 @@ def snmp_to_python(key, snmp_value):
 
 class JsonGetCommandResponder(cmdrsp.GetCommandResponder):
     '''Custom GET responder with JSON backend'''
-    
     def handleMgmtOperation(self, snmpEngine, stateReference, contextName, PDU, acInfo):
+        # Para cada OID solicitado:
+        # 1. Verifica si existe el OID (sino: NoSuchObject)
+        # 2. Comprueba permisos de lectura (check_read_access)
+        # 3. Retorna el valor convertido a tipo SNMP
+        # 4. Construye y envía respuesta PDU
         varBinds = v2c.apiPDU.getVarBinds(PDU)
         rspVarBinds = []
         errorStatus = 0
@@ -210,6 +221,10 @@ class JsonGetNextCommandResponder(cmdrsp.NextCommandResponder):
     '''Custom GETNEXT responder with JSON backend'''
     
     def handleMgmtOperation(self, snmpEngine, stateReference, contextName, PDU, acInfo):
+        # Para cada OID:
+        # 1. Busca el siguiente OID en ORDERED_OIDS
+        # 2. Si no hay siguiente: EndOfMibView
+        # 3. Valida acceso y retorna el siguiente valor
         varBinds = v2c.apiPDU.getVarBinds(PDU)
         rspVarBinds = []
         errorStatus = 0
@@ -264,6 +279,15 @@ class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
     '''Custom SET responder with JSON backend and validation'''
     
     def handleMgmtOperation(self, snmpEngine, stateReference, contextName, PDU, acInfo):
+        # Para cada variable a modificar:
+        # 1. Verifica que el OID exista
+        # 2. Valida tipo SNMP (Integer, OctetString, etc.)
+        # 3. Aplica restricciones:
+        #    - manager/managerEmail: máx 255 caracteres
+        #    - cpuThreshold: 0-100
+        #    - cpuUsage: SOLO LECTURA (notWritable)
+        # 4. Guarda en JSON si todo es válido
+        # 5. Retorna error si algo falla
         varBinds = v2c.apiPDU.getVarBinds(PDU)
         rspVarBinds = []
         errorStatus = 0
@@ -359,6 +383,13 @@ class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
 
 def send_trap(snmpEngine, cpu_usage, cpu_threshold):
     '''Send SNMPv2c TRAP notification'''
+    # Variables del TRAP:
+    # - OID_CPU_USAGE: valor actual
+    # - OID_CPU_THRESHOLD: umbral configurado
+    # - OID_MANAGER_EMAIL: destino
+    # - sysUpTime: uptime del agente
+    
+    # Envía a 'trap-target' (127.0.0.1:162)
     print(f'Sending TRAP: CPU {cpu_usage}% > threshold {cpu_threshold}%')
     
     ntfOrg = ntforg.NotificationOriginator()
@@ -382,6 +413,11 @@ def send_trap(snmpEngine, cpu_usage, cpu_threshold):
 
 def send_email(cpu_usage, cpu_threshold):
     '''Send email notification via SMTP'''
+    # Formatea mensaje con:
+    # - Nombre del gestor
+    # - Uso de CPU y umbral
+    # - Timestamp
+    # Se conecta a localhost:1025 (MailHog para pruebas)
     try:
         recipient = mib_store.data['managerEmail']
         manager = mib_store.data['manager']
@@ -423,7 +459,7 @@ SNMP Monitoring System
 # ===========================
 
 async def cpu_sampler(snmpEngine):
-    '''Monitor CPU and send notifications on threshold crossing (edge-triggered)'''
+    '''Monitor CPU every 5 seconds and send notifications on threshold crossing (edge-triggered)'''
     print('CPU sampler started')
     
     while True:
@@ -463,33 +499,34 @@ async def cpu_sampler(snmpEngine):
 # ===========================
 
 def main():
+    """Configura y arranca el agente SNMP"""
     print('=== Mini SNMP Agent Starting ===')
     print(f'Base OID: {".".join(map(str, BASE_OID))}')
     
-    # ✅ CREAR EL EVENT LOOP PRIMERO (antes de SnmpEngine)
+    # 1 CREAR EL EVENT LOOP PRIMERO (antes de SnmpEngine)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
-    # Create SNMP engine
+    # 2. Inicializa motor SNMP
     snmpEngine = engine.SnmpEngine()
     
-    # ✅ USAR LA API MODERNA (snake_case)
-    # Transport setup (UDP over IPv4, port 161)
+    # 3 USAR LA API MODERNA (snake_case)
+    # Configura transporte UDP en puerto 161
     config.add_transport(
         snmpEngine,
         udp.DOMAIN_NAME,
         udp.UdpTransport().open_server_mode(('0.0.0.0', 161))
     )
     
-    # SNMPv2c setup
+    # 4. Define comunidades SNMP:
     # Community 'public' -> read-only (security name: 'public-user')
     config.add_v1_system(snmpEngine, 'public-user', 'public')
     
     # Community 'private' -> read-write (security name: 'private-user')
     config.add_v1_system(snmpEngine, 'private-user', 'private')
     
-    # VACM configuration
-    # Allow read access for public-user
+    # 5. Configura VACM (acceso):
+    #    public-user: solo lectura en BASE_OID
     config.add_vacm_user(
         snmpEngine,
         2,  # SNMPv2c
@@ -499,7 +536,7 @@ def main():
         writeSubTree=()
     )
     
-    # Allow read-write access for private-user
+    #    private-user: lectura+escritura en BASE_OID
     config.add_vacm_user(
         snmpEngine,
         2,  # SNMPv2c
@@ -509,7 +546,7 @@ def main():
         writeSubTree=BASE_OID
     )
     
-    # ✅ TRAP target configuration (API moderna)
+    # 6. Configura destino TRAP (127.0.0.1:162) (API moderna)
     config.add_target_parameters(snmpEngine, 'trap-params', 'public-user', 'noAuthNoPriv', 1)
     config.add_target_address(
         snmpEngine,
@@ -527,10 +564,10 @@ def main():
         'trap'
     )
     
-    # Create SNMP context
+    # 7. Crea contexto SNMP
     snmpContext = context.SnmpContext(snmpEngine)
     
-    # Register custom command responders
+    # 8. Registra responders personalizados
     JsonGetCommandResponder(snmpEngine, snmpContext)
     JsonGetNextCommandResponder(snmpEngine, snmpContext)
     JsonSetCommandResponder(snmpEngine, snmpContext)
@@ -543,10 +580,10 @@ def main():
     print(f'TRAP target: {TRAP_HOST}:{TRAP_PORT}')
     print(f'SMTP server: {SMTP_HOST}:{SMTP_PORT}')
     
-    # Start CPU monitoring task
+    # 9. Inicia tarea de monitoreo de CPU
     loop.create_task(cpu_sampler(snmpEngine))
 
-    # Mantén el bucle activo en el hilo principal
+    # 10. Ejecuta el event loop (bloqueante)
     try:
         print('\n=== Agent running - Press Ctrl+C to quit ===\n')
         loop.run_forever()
