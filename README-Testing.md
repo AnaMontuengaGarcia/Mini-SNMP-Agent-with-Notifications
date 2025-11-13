@@ -13,7 +13,7 @@ python3 -m smtpd -n -c DebuggingServer localhost:1025
 snmptrapd -f -Lo
 
 # 4. Start agent (Terminal 3)
-sudo python3 mini_agent.py
+sudo python3 agent_AnaDaniel.py
 
 # 5. Test (Terminal 4)
 snmpget -v2c -c public localhost 1.3.6.1.3.28308.1.1.0
@@ -256,7 +256,7 @@ cat mib_state.json
 # 3. Stop agent (Ctrl+C)
 
 # 4. Restart agent
-sudo python3 mini_agent.py
+sudo python3 agent_AnaDaniel.py
 
 # 5. Verify values persisted
 snmpget -v2c -c public localhost \
@@ -429,10 +429,10 @@ sudo python3 mini_agent.py
 
 # Option 2: Use capability (Linux)
 sudo setcap cap_net_bind_service=+ep /usr/bin/python3.X
-python3 mini_agent.py
+python3 agent_AnaDaniel.py
 
 # Option 3: Use high port for testing
-# Edit mini_agent.py: Change port 161 to 1161
+# Edit agent_AnaDaniel.py: Change port 161 to 1161
 # Then test with: snmpget -v2c -c public localhost:1161 ...
 ```
 
