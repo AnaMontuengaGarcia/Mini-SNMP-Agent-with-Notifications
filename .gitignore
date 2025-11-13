@@ -28,3 +28,6 @@ build/
 
 #Instancia de la MIB
 mib_state.json
+
+#Test files
+README-Testing.md
