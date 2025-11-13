@@ -21,7 +21,11 @@ sudo journalctl -u snmptrapd -f
 
 
 # 4. Start agent (Terminal 3)
+<<<<<<< HEAD
+sudo python3 agent_AnaDaniel.py
+=======
 sudo ~/Documents/github-repositories/Mini-SNMP-Agent-with-Notifications/py314/bin/python agent_AnaDaniel.py
+>>>>>>> 45aa42e5394b673326db3b57143111f6a300292a
 
 # 5. Test (Terminal 4)
 snmpget -v2c -c public localhost 1.3.6.1.3.28308.1.1.0
@@ -264,7 +268,7 @@ cat mib_state.json
 # 3. Stop agent (Ctrl+C)
 
 # 4. Restart agent
-sudo python3 mini_agent.py
+sudo python3 agent_AnaDaniel.py
 
 # 5. Verify values persisted
 snmpget -v2c -c public localhost \
@@ -437,10 +441,10 @@ sudo python3 mini_agent.py
 
 # Option 2: Use capability (Linux)
 sudo setcap cap_net_bind_service=+ep /usr/bin/python3.X
-python3 mini_agent.py
+python3 agent_AnaDaniel.py
 
 # Option 3: Use high port for testing
-# Edit mini_agent.py: Change port 161 to 1161
+# Edit agent_AnaDaniel.py: Change port 161 to 1161
 # Then test with: snmpget -v2c -c public localhost:1161 ...
 ```
 
