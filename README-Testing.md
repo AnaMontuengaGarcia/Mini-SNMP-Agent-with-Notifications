@@ -2,18 +2,30 @@
 
 ## Quick Start
 
-```bash
+```
 # 1. Install dependencies
-pip install pysnmp==7.1.17 psutil==5.9.5
+pip install pysnmp==7.1.17 psutil==5.9.5 aiosmtpd
 
 # 2. Start SMTP server (Terminal 1)
-python3 -m smtpd -n -c DebuggingServer localhost:1025
+python -m aiosmtpd -n -l localhost:1025
 
 # 3. Start TRAP receiver (Terminal 2)
-snmptrapd -f -Lo
+# Iniciar el servicio
+sudo systemctl start snmptrapd
+
+# Ver el estado
+sudo systemctl status snmptrapd
+
+# Ver los logs
+sudo journalctl -u snmptrapd -f
+
 
 # 4. Start agent (Terminal 3)
+<<<<<<< HEAD
 sudo python3 agent_AnaDaniel.py
+=======
+sudo ~/Documents/github-repositories/Mini-SNMP-Agent-with-Notifications/py314/bin/python agent_AnaDaniel.py
+>>>>>>> 45aa42e5394b673326db3b57143111f6a300292a
 
 # 5. Test (Terminal 4)
 snmpget -v2c -c public localhost 1.3.6.1.3.28308.1.1.0
@@ -23,7 +35,7 @@ snmpget -v2c -c public localhost 1.3.6.1.3.28308.1.1.0
 
 ### GET Operations
 
-```bash
+```
 # Get single object
 snmpget -v2c -c public localhost 1.3.6.1.3.28308.1.1.0
 # Expected: iso.3.6.1.3.28308.1.1.0 = STRING: "NetworkAdmin"
@@ -44,7 +56,7 @@ snmpget -v2c -c wrongcommunity localhost 1.3.6.1.3.28308.1.1.0
 
 ### GETNEXT Operations
 
-```bash
+```
 # Get next from base OID
 snmpgetnext -v2c -c public localhost 1.3.6.1.3.28308
 # Should return manager (1.3.6.1.3.28308.1.1.0)
@@ -62,10 +74,10 @@ snmpgetnext -v2c -c public localhost 1.3.6.1.3.28308.1.4.0
 
 ### SET Operations - Success Cases
 
-```bash
+```
 # SET manager name
 snmpset -v2c -c private localhost \
-  1.3.6.1.3.28308.1.1.0 s "John Doe"
+  1.3.6.1.3.28308.1.1.0 s "Daniel Modrego"
 
 # Verify change
 snmpget -v2c -c public localhost 1.3.6.1.3.28308.1.1.0
@@ -90,7 +102,7 @@ cat mib_state.json
 
 ### SET Operations - Error Cases
 
-```bash
+```
 # Error: Wrong community (notWritable)
 snmpset -v2c -c public localhost \
   1.3.6.1.3.28308.1.1.0 s "Test"
@@ -129,7 +141,7 @@ snmpset -v2c -c private localhost \
 
 ### GETBULK Operations
 
-```bash
+```
 # Bulk walk
 snmpbulkwalk -v2c -c public localhost 1.3.6.1.3.28308
 
@@ -142,7 +154,7 @@ snmpbulkget -v2c -c public -Cn0 -Cr4 localhost \
 
 #### Method 1: Set Low Threshold
 
-```bash
+```
 # 1. Set very low threshold
 snmpset -v2c -c private localhost \
   1.3.6.1.3.28308.1.4.0 i 5
@@ -159,7 +171,7 @@ snmpset -v2c -c private localhost \
 
 #### Method 2: Generate CPU Load
 
-```bash
+```
 # 1. Set reasonable threshold
 snmpset -v2c -c private localhost \
   1.3.6.1.3.28308.1.4.0 i 50
@@ -202,7 +214,7 @@ kill $PID2
 
 ### Edge-Triggered Verification Script
 
-```bash
+```
 #!/bin/bash
 # test_edge_triggered.sh
 
@@ -243,7 +255,7 @@ echo "Test complete. Check agent logs for exactly 2 TRAP messages."
 
 ### Persistence Testing
 
-```bash
+```
 # 1. Set custom values
 snmpset -v2c -c private localhost \
   1.3.6.1.3.28308.1.1.0 s "TestUser" \
@@ -271,7 +283,7 @@ snmpget -v2c -c public localhost \
 
 ### Simple TRAP Receiver
 
-```python
+```
 #!/usr/bin/env python3
 # trap_receiver.py
 
@@ -313,7 +325,7 @@ except KeyboardInterrupt:
 
 ### Automated Test Suite
 
-```python
+```
 #!/usr/bin/env python3
 # test_agent.py
 
@@ -339,7 +351,7 @@ def test_get(oid, expected_type=None):
         print(f'✗ GET {oid}: {errorStatus.prettyPrint()}')
         return False
     else:
-        oid, val = varBinds[0]
+        oid, val = varBinds
         print(f'✓ GET {oid}: {val.prettyPrint()}')
         return True
 
@@ -383,7 +395,7 @@ def test_getnext(oid):
         print(f'✗ GETNEXT {oid}: Error')
         return False
     else:
-        oid, val = varBinds[0]
+        oid, val = varBinds
         print(f'✓ GETNEXT returned {oid}: {val.prettyPrint()}')
         return True
 
@@ -423,7 +435,7 @@ print('='*60)
 ### Problem: "Permission denied" on port 161
 
 **Solution:**
-```bash
+```
 # Option 1: Run with sudo
 sudo python3 mini_agent.py
 
@@ -439,7 +451,7 @@ python3 agent_AnaDaniel.py
 ### Problem: TRAP not received
 
 **Checklist:**
-```bash
+```
 # 1. Verify TRAP receiver is running
 sudo netstat -nlup | grep 162
 
@@ -458,9 +470,9 @@ snmptrap -v2c -c public localhost:162 '' \
 ### Problem: Email not sent
 
 **Debug steps:**
-```bash
+```
 # 1. Verify SMTP server running
-python3 -m smtpd -n -c DebuggingServer localhost:1025
+python3 -m aiosmtpd -n -l localhost:1025
 
 # 2. Test SMTP separately
 python3 << EOF
@@ -478,7 +490,7 @@ EOF
 ### Problem: Values not persisting
 
 **Debug:**
-```bash
+```
 # 1. Check file permissions
 ls -la mib_state.json
 
@@ -494,7 +506,7 @@ cat mib_state.json | python3 -m json.tool
 
 ## Performance Monitoring
 
-```bash
+```
 # Monitor agent CPU usage
 while true; do
   ps aux | grep mini_agent.py | grep -v grep
@@ -511,7 +523,7 @@ time snmpget -v2c -c public localhost 1.3.6.1.3.28308.1.1.0
 ## Complete Deployment Checklist
 
 - [ ] Python 3.7+ installed
-- [ ] pysnmp and psutil installed
+- [ ] pysnmp, psutil, and aiosmtpd installed
 - [ ] Root privileges available for port 161
 - [ ] SMTP server configured (if using email)
 - [ ] TRAP receiver configured (if testing notifications)
@@ -550,3 +562,4 @@ time snmpget -v2c -c public localhost 1.3.6.1.3.28308.1.1.0
    - Add request rate limiting
    - Monitor memory usage
    - Consider database backend for large deployments
+```

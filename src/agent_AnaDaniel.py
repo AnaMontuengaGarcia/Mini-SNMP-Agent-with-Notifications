@@ -165,13 +165,12 @@ def snmp_to_python(key, snmp_value):
 
 class JsonGetCommandResponder(cmdrsp.GetCommandResponder):
     '''Custom GET responder with JSON backend'''
-    def handleMgmtOperation(self, snmpEngine, stateReference, contextName, PDU, acInfo):
-        # Para cada OID solicitado:
-        # 1. Verifica si existe el OID (sino: NoSuchObject)
-        # 2. Comprueba permisos de lectura (check_read_access)
-        # 3. Retorna el valor convertido a tipo SNMP
-        # 4. Construye y envía respuesta PDU
-        varBinds = v2c.apiPDU.getVarBinds(PDU)
+
+    
+    # 1. Cambia el nombre del método y elimina acInfo
+    def handle_management_operation(self, snmpEngine, stateReference, contextName, PDU):
+        varBinds = v2c.apiPDU.get_varbinds(PDU)
+
         rspVarBinds = []
         errorStatus = 0
         errorIndex = 0
@@ -181,18 +180,9 @@ class JsonGetCommandResponder(cmdrsp.GetCommandResponder):
             key = mib_store.oid_to_key(oid_tuple)
             
             if key is None:
-                # OID not found -> NoSuchObject
                 rspVarBinds.append((oid, rfc1905.NoSuchObject()))
             else:
-                # Check VACM access
-                securityModel = acInfo
-                securityName = acInfo
-                
-                # Get community for authorization check
-                if not self.check_read_access(key, securityName):
-                    errorStatus = 6  # noAccess
-                    errorIndex = idx
-                    break
+                # 2. Elimina el bloque de 'acInfo' y 'check_read_access'
                 
                 # Return value
                 value = mib_store.data[key]
@@ -202,30 +192,21 @@ class JsonGetCommandResponder(cmdrsp.GetCommandResponder):
         if errorStatus:
             rspVarBinds = [(oid, v2c.Null()) for oid, val in varBinds]
         
-        # Build response PDU
-        rspPDU = v2c.apiPDU.getResponse(PDU)
-        v2c.apiPDU.setErrorStatus(rspPDU, errorStatus)
-        v2c.apiPDU.setErrorIndex(rspPDU, errorIndex)
-        v2c.apiPDU.setVarBinds(rspPDU, rspVarBinds)
-        
-        # Send response inline (critical for stateReference validity)
-        self.sendPdu(snmpEngine, stateReference, rspPDU)
-    
+        # 3. Responde con send_varbinds
+        self.send_varbinds(snmpEngine, stateReference, errorStatus, errorIndex, rspVarBinds)
+
     def check_read_access(self, key, securityName):
-        '''Check if user has read access'''
-        # All objects are readable by both public and private
+        # Esta función ya no es necesaria, pero no hace daño dejarla
         return True
 
 
 class JsonGetNextCommandResponder(cmdrsp.NextCommandResponder):
     '''Custom GETNEXT responder with JSON backend'''
     
-    def handleMgmtOperation(self, snmpEngine, stateReference, contextName, PDU, acInfo):
-        # Para cada OID:
-        # 1. Busca el siguiente OID en ORDERED_OIDS
-        # 2. Si no hay siguiente: EndOfMibView
-        # 3. Valida acceso y retorna el siguiente valor
-        varBinds = v2c.apiPDU.getVarBinds(PDU)
+    # 1. Cambia el nombre del método y elimina acInfo
+    def handle_management_operation(self, snmpEngine, stateReference, contextName, PDU):
+        varBinds = v2c.apiPDU.get_varbinds(PDU)
+
         rspVarBinds = []
         errorStatus = 0
         errorIndex = 0
@@ -233,7 +214,6 @@ class JsonGetNextCommandResponder(cmdrsp.NextCommandResponder):
         for idx, (oid, val) in enumerate(varBinds, 1):
             oid_tuple = tuple(oid)
             
-            # Find next OID lexicographically
             next_oid = None
             for candidate in ORDERED_OIDS:
                 if candidate > oid_tuple:
@@ -241,19 +221,12 @@ class JsonGetNextCommandResponder(cmdrsp.NextCommandResponder):
                     break
             
             if next_oid is None:
-                # End of MIB
                 rspVarBinds.append((oid, rfc1905.EndOfMibView()))
             else:
-                # Check access
                 key = mib_store.oid_to_key(next_oid)
-                securityName = acInfo
                 
-                if not self.check_read_access(key, securityName):
-                    errorStatus = 6  # noAccess
-                    errorIndex = idx
-                    break
+                # 2. Elimina el bloque de 'acInfo' y 'check_read_access'
                 
-                # Return next value
                 value = mib_store.data[key]
                 snmp_value = python_to_snmp(key, value)
                 rspVarBinds.append((next_oid, snmp_value))
@@ -261,34 +234,22 @@ class JsonGetNextCommandResponder(cmdrsp.NextCommandResponder):
         if errorStatus:
             rspVarBinds = [(oid, v2c.Null()) for oid, val in varBinds]
         
-        # Build response PDU
-        rspPDU = v2c.apiPDU.getResponse(PDU)
-        v2c.apiPDU.setErrorStatus(rspPDU, errorStatus)
-        v2c.apiPDU.setErrorIndex(rspPDU, errorIndex)
-        v2c.apiPDU.setVarBinds(rspPDU, rspVarBinds)
-        
-        # Send response inline
-        self.sendPdu(snmpEngine, stateReference, rspPDU)
+        # 3. Responde con send_varbinds
+        self.send_varbinds(snmpEngine, stateReference, errorStatus, errorIndex, rspVarBinds)
     
     def check_read_access(self, key, securityName):
-        '''Check if user has read access'''
+        # Esta función ya no es necesaria
         return True
 
 
 class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
     '''Custom SET responder with JSON backend and validation'''
     
-    def handleMgmtOperation(self, snmpEngine, stateReference, contextName, PDU, acInfo):
-        # Para cada variable a modificar:
-        # 1. Verifica que el OID exista
-        # 2. Valida tipo SNMP (Integer, OctetString, etc.)
-        # 3. Aplica restricciones:
-        #    - manager/managerEmail: máx 255 caracteres
-        #    - cpuThreshold: 0-100
-        #    - cpuUsage: SOLO LECTURA (notWritable)
-        # 4. Guarda en JSON si todo es válido
-        # 5. Retorna error si algo falla
-        varBinds = v2c.apiPDU.getVarBinds(PDU)
+
+    # 1. Cambia el nombre del método y elimina acInfo
+    def handle_management_operation(self, snmpEngine, stateReference, contextName, PDU):
+        varBinds = v2c.apiPDU.get_varbinds(PDU)
+
         rspVarBinds = []
         errorStatus = 0
         errorIndex = 0
@@ -298,21 +259,15 @@ class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
             key = mib_store.oid_to_key(oid_tuple)
             
             if key is None:
-                # OID not found
                 errorStatus = 5  # noCreation
                 errorIndex = idx
                 break
             
-            # Check write access
-            securityName = acInfo
-            if not self.check_write_access(key, securityName):
-                errorStatus = 17  # notWritable
-                errorIndex = idx
-                break
+            # 2. Elimina el bloque 'acInfo' y 'check_write_access'
+            # (El framework VACM ya ha concedido el acceso)
             
-            # Validate value type
             try:
-                # Check type
+                # ... (el resto del bloque try/except está perfecto) ...
                 if key in ['manager', 'managerEmail']:
                     if not isinstance(val, v2c.OctetString):
                         errorStatus = 7  # wrongType
@@ -324,10 +279,8 @@ class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
                         errorIndex = idx
                         break
                 
-                # Convert and validate
                 python_value = snmp_to_python(key, val)
                 
-                # Validate constraints
                 if key in ['manager', 'managerEmail']:
                     if len(python_value) > 255:
                         errorStatus = 10  # wrongValue
@@ -339,12 +292,10 @@ class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
                         errorIndex = idx
                         break
                 elif key == 'cpuUsage':
-                    # Read-only
                     errorStatus = 17  # notWritable
                     errorIndex = idx
                     break
                 
-                # Set value
                 mib_store.data[key] = python_value
                 rspVarBinds.append((oid, val))
                 
@@ -356,25 +307,14 @@ class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
         if errorStatus:
             rspVarBinds = [(oid, v2c.Null()) for oid, val in varBinds]
         else:
-            # Save to JSON on successful SET
             mib_store.save_to_json()
         
-        # Build response PDU
-        rspPDU = v2c.apiPDU.getResponse(PDU)
-        v2c.apiPDU.setErrorStatus(rspPDU, errorStatus)
-        v2c.apiPDU.setErrorIndex(rspPDU, errorIndex)
-        v2c.apiPDU.setVarBinds(rspPDU, rspVarBinds)
-        
-        # Send response inline
-        self.sendPdu(snmpEngine, stateReference, rspPDU)
+        # 3. Responde con send_varbinds
+        self.send_varbinds(snmpEngine, stateReference, errorStatus, errorIndex, rspVarBinds)
     
     def check_write_access(self, key, securityName):
-        '''Check if user has write access'''
-        # Only 'private-user' (private community) has write access
-        # cpuUsage is always read-only
-        if key == 'cpuUsage':
-            return False
-        return securityName == 'private-user'
+        # Esta función ya no es necesaria
+        return True
 
 
 # ===========================
