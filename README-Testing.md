@@ -21,12 +21,8 @@ sudo journalctl -u snmptrapd -f
 
 
 # 4. Start agent (Terminal 3)
-<<<<<<< HEAD
-sudo python3 agent_AnaDaniel.py
-=======
-sudo ~/Documents/github-repositories/Mini-SNMP-Agent-with-Notifications/py314/bin/python agent_AnaDaniel.py
->>>>>>> 45aa42e5394b673326db3b57143111f6a300292a
 
+sudo ~/Documents/github-repositories/Mini-SNMP-Agent-with-Notifications/py314/bin/python agent_AnaDaniel.py
 # 5. Test (Terminal 4)
 snmpget -v2c -c public localhost 1.3.6.1.3.28308.1.1.0
 ```
