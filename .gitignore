@@ -23,3 +23,6 @@ build/
 
 # Archivos de sistema
 .DS_Store
+
+#Instancia de la MIB
+mib_state.json
