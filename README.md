@@ -32,6 +32,8 @@ Un agente SNMPv2c ligero implementado en Python que monitoriza el uso de CPU y e
 
 ## Requisitos
 
+**Python**: 3.13.x (⚠️ No compatible con Python 3.14+)
+
 ```bash
 pip install pysnmp psutil
 ```
