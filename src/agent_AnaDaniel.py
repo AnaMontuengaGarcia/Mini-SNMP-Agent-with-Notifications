@@ -285,11 +285,9 @@ class JsonGetNextCommandResponder(cmdrsp.NextCommandResponder):
 class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
     def handle_management_operation(self, snmpEngine, stateReference, contextName, PDU):
         global current_security_name
-        security_name_str = str(current_security_name)
 
         # Verificar permisos (solo 'private-user' puede escribir)
         if current_security_name != b'private-user':
-            print(f"SET rechazado: '{security_name_str}' no tiene permisos de escritura")
             varBinds = v2c.apiPDU.get_varbinds(PDU)
             rspVarBinds = [(oid, v2c.Null()) for oid, val in varBinds]
             self.send_varbinds(snmpEngine, stateReference, 6, 1, rspVarBinds)
@@ -305,7 +303,7 @@ class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
             key = mib_store.oid_to_key(oid_tuple)
 
             if key is None:
-                errorStatus = 5
+                errorStatus = 18
                 errorIndex = idx
                 break
 
@@ -366,11 +364,14 @@ class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
 async def send_trap(cpu_usage, cpu_threshold):
     """Envía trap SNMP - versión con tuplas de OID"""
     print(f'Sending TRAP: CPU {cpu_usage}% > threshold {cpu_threshold}%')
-    
+
+    # Engine temporal: evita conflictos ACL/VACM del agente principal y simplifica el envío usando hlapi (high-level api)
     trapEngine = engine.SnmpEngine()
     
     try:
-        
+        # Obtenemos el sysuptime del engine principal, puesto que el del engine temporal será 0 y no tiene sentido enviarlo.
+        agent_uptime = mib_store.get_sysuptime()
+
         # OID para tipo de trampa (standard)
         SNMP_TRAP_OID = (1, 3, 6, 1, 6, 3, 1, 1, 4, 1, 0)
         TRAP_TYPE_OID = BASE_OID + (2, 1)  # Identificador de evento cpuThresholdExceeded
@@ -382,6 +383,8 @@ async def send_trap(cpu_usage, cpu_threshold):
             ContextData(),
             'trap',
             # Tuplas directamente
+            # Importante incluir sysUpTime explícitamente como primer varbind
+            ObjectType(ObjectIdentity(SYS_UP_TIME), v2c.TimeTicks(agent_uptime)),
             ObjectType(ObjectIdentity(SNMP_TRAP_OID), ObjectIdentifier(TRAP_TYPE_OID)),
             ObjectType(ObjectIdentity(OID_CPU_USAGE), Integer32(cpu_usage)),
             ObjectType(ObjectIdentity(OID_CPU_THRESHOLD), Integer32(cpu_threshold)),
@@ -470,23 +473,27 @@ async def cpu_sampler(snmpEngine):
                 print(f'\nCPU back below threshold: {cpu_usage}% <= {threshold}%')
 
             print(f'CPU: {cpu_usage}% (threshold: {threshold}%)', end='\r')
+
+        except asyncio.CancelledError:
+            print('\nCPU sampler stopping...')
+            break
+
         except Exception as e:
             print(f'\nError in cpu_sampler: {e}')
             import traceback
             traceback.print_exc()
             
         await asyncio.sleep(5)
+    print('CPU sampler stopped')
 
 # ===========================
 # Main Agent
 # ===========================
 
-def main():
+async def main():
+    """Función principal del agente SNMP"""
     print('=== Mini SNMP Agent Starting ===')
     print(f'Base OID: {".".join(map(str, BASE_OID))}')
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
 
     snmpEngine = engine.SnmpEngine()
 
@@ -548,17 +555,36 @@ def main():
     print(f'TRAP target: {TRAP_HOST}:{TRAP_PORT}')
     print(f'SMTP server: {SMTP_SERVER}:{SMTP_PORT} (Gmail)')
 
-    # Iniciar el muestreador de CPU en segundo plano
-    loop.create_task(cpu_sampler(snmpEngine))
+    # Iniciar el muestreador de CPU y guardar la referencia
+    sampler_task = asyncio.create_task(cpu_sampler(snmpEngine))
+
+    # Iniciar el dispatcher
+    snmpEngine.transport_dispatcher.job_started(1)
+
+    print('\n=== Agent running - Press Ctrl+C to quit ===\n')
 
     try:
-        print('\n=== Agent running - Press Ctrl+C to quit ===\n')
-        loop.run_forever()
+        # Mantener el programa corriendo indefinidamente
+        await asyncio.Event().wait()
     except KeyboardInterrupt:
         print('\nShutting down...')
     finally:
+        print('Stopping CPU sampler...')
+        sampler_task.cancel()
+        try:
+            await sampler_task
+        except asyncio.CancelledError:
+            print('CPU sampler cancelled')
+
+        # Guardar estado final
+        mib_store.save_to_json()
+
+        # Cerrar dispatcher
         snmpEngine.transport_dispatcher.close_dispatcher()
         print('Agent stopped')
 
 if __name__ == '__main__':
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print('\n👋 Goodbye!')
