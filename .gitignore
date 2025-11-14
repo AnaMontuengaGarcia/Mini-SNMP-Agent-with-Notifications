@@ -1,6 +1,8 @@
 # Entorno virtual
 venv/
+py312/
 py313/
+py314/
 env/
 .venv/
 
@@ -26,3 +28,6 @@ build/
 
 #Instancia de la MIB
 mib_state.json
+
+#Test files
+README_Testing.md
