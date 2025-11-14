@@ -31,16 +31,19 @@ from pysnmp.hlapi.v3arch.asyncio import (
 #
 
 # ===========================
-# Configuration Constants
+# Constantes de MIB y Configuración
 # ===========================
 
-BASE_OID = BASE_OID = (1, 3, 6, 1, 4, 1, 28308)
+BASE_OID = BASE_OID = (1, 3, 6, 1, 4, 1, 28308) # OID base de la empresa (Private Enterprise Number)
 
+# OIDs para atributos de los requerimientos del programa
 OID_MANAGER = BASE_OID + (1, 1, 0)
 OID_MANAGER_EMAIL = BASE_OID + (1, 2, 0)
 OID_CPU_USAGE = BASE_OID + (1, 3, 0)
 OID_CPU_THRESHOLD = BASE_OID + (1, 4, 0)
 
+
+# OIDs estándar de MIB -II System 
 SYS_DESCR = (1, 3, 6, 1, 2, 1, 1, 1, 0)
 SYS_OBJECT_ID = (1, 3, 6, 1, 2, 1, 1, 2, 0)
 SYS_UP_TIME = (1, 3, 6, 1, 2, 1, 1, 3, 0)
@@ -49,18 +52,19 @@ SYS_NAME = (1, 3, 6, 1, 2, 1, 1, 5, 0)
 SYS_LOCATION = (1, 3, 6, 1, 2, 1, 1, 6, 0)
 SYS_SERVICES = (1, 3, 6, 1, 2, 1, 1, 7, 0)
 
+# Lista de OIDs servidos, en orden
 ORDERED_OIDS = sorted([
     SYS_DESCR, SYS_OBJECT_ID, SYS_UP_TIME, SYS_CONTACT, SYS_NAME,
     SYS_LOCATION, SYS_SERVICES,
     OID_MANAGER, OID_MANAGER_EMAIL, OID_CPU_USAGE, OID_CPU_THRESHOLD
 ])
 
-JSON_FILE = 'mib_state.json'
+JSON_FILE = 'mib_state.json'    # Archivo para persistencia del estado
 TRAP_HOST = '127.0.0.1'
 TRAP_PORT = 162
 
 # ===========================
-# Email (Gmail) Configuration
+# Configuración de Email (Gmail)
 # ===========================
 EMAIL_SENDER = "xxxxx@gmail.com"
 EMAIL_PASSWORD = "xxxxxxxxxxxxxxxx"  # Contraseña de aplicación (16 dígitos)
@@ -68,18 +72,19 @@ SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
 
 # ===========================
-# Data Store
+# Clase para manejo de los datos del agente (MIB)
 # ===========================
 
 class MibDataStore:
     def __init__(self):
+        # Diccionario con valores iniciales
         self.data = {
             'manager': 'NetworkAdmin',
             'managerEmail': '[email protected]',
             'cpuUsage': 0,
             'cpuThreshold': 80,
 
-            # MIB-II System Group (Valores por defecto)
+            # Atributos estándar SNMP System
             'sysDescr': f'Mini SNMP Agent (Python/pysnmp) on {platform.system()}',
             'sysObjectID': BASE_OID, # Identifica nuestro agente con nuestro OID base
             'sysContact': 'NetworkAdmin', # Se sincronizará con 'manager'
@@ -87,15 +92,17 @@ class MibDataStore:
             'sysLocation': 'Lab System (Settable)',
             'sysServices': 72 # Servicios: Aplicación (bit 2) + End-to-End (bit 6)
         }
-        self.above_threshold = False
-        self.start_time = time.time()
-        self.load_from_json()
+        self.above_threshold = False    # Indica si el uso CPU ya superó el umbral
+        self.start_time = time.time()       # Tiempo de inicio para sysUpTime
+        self.load_from_json()   # Cargar estado JSON
 
+    # Cargar valores almacenados desde el JSON
     def load_from_json(self):
         if os.path.exists(JSON_FILE):
             try:
                 with open(JSON_FILE, 'r') as f:
                     loaded = json.load(f)
+                    # Cargar valores con defaults si no existen
                     self.data['manager'] = loaded.get('manager', self.data['manager'])
                     self.data['managerEmail'] = loaded.get('managerEmail', self.data['managerEmail'])
                     self.data['cpuThreshold'] = loaded.get('cpuThreshold', self.data['cpuThreshold'])
@@ -113,6 +120,7 @@ class MibDataStore:
             print(f'File {JSON_FILE} not found. Creating with default values.')
             self.save_to_json()
 
+    # Guardar datos persistentes relevantes en el JSON
     def save_to_json(self):
         try:
             with open(JSON_FILE, 'w') as f:
@@ -129,8 +137,9 @@ class MibDataStore:
         except Exception as e:
             print(f'Error saving JSON: {e}')
 
+    # Relacionar un OID a la clave interna del diccionario
     def oid_to_key(self, oid):
-        # MIB-II System Group
+        # Grupo System de MIB-II
         if oid == SYS_DESCR:
             return 'sysDescr'
         elif oid == SYS_OBJECT_ID:
@@ -145,7 +154,7 @@ class MibDataStore:
             return 'sysLocation'
         elif oid == SYS_SERVICES:
             return 'sysServices'
-        # Custom Enterprise MIB
+        # OIDs personalizados de empresa
         elif oid == OID_MANAGER:
             return 'manager'
         elif oid == OID_MANAGER_EMAIL:
@@ -155,12 +164,13 @@ class MibDataStore:
         elif oid == OID_CPU_THRESHOLD:
             return 'cpuThreshold'
         return None
-
+    # Calcular upTime: tiempo (en centésimas de segundo) desde arranque del agente
     def get_sysuptime(self):
         return int((time.time() - self.start_time) * 100)
 
 mib_store = MibDataStore()
 
+# Traducción de valores Python a tipos SNMP
 def python_to_snmp(key, value):
     if key in ['manager', 'managerEmail', 'sysDescr', 'sysContact', 'sysName', 'sysLocation']:
         return v2c.OctetString(str(value).encode('utf-8'))
@@ -172,6 +182,7 @@ def python_to_snmp(key, value):
         return v2c.ObjectIdentifier(value)
     return v2c.Null()
 
+# Traducción de valores SNMP a tipos Python
 def snmp_to_python(key, snmp_value):
     if key in ['manager', 'managerEmail', 'sysContact', 'sysName', 'sysLocation']:
         if isinstance(snmp_value, v2c.OctetString):
@@ -198,9 +209,10 @@ def request_observer(snmpEngine, execpoint, variables, cbCtx):
         current_security_name = variables.get('securityName', b'')
 
 # ===========================
-# Command Responders
+# Command Responders de Comando SNMP (GET, GETNEXT, SET)
 # ===========================
 
+# GET: responde consultas de lectura
 class JsonGetCommandResponder(cmdrsp.GetCommandResponder):
     def handle_management_operation(self, snmpEngine, stateReference, contextName, PDU):
         varBinds = v2c.apiPDU.get_varbinds(PDU)
@@ -231,6 +243,7 @@ class JsonGetCommandResponder(cmdrsp.GetCommandResponder):
 
         self.send_varbinds(snmpEngine, stateReference, errorStatus, errorIndex, rspVarBinds)
 
+# GETNEXT: responde consulta para recorrer la MIB secuencialmente
 class JsonGetNextCommandResponder(cmdrsp.NextCommandResponder):
     def handle_management_operation(self, snmpEngine, stateReference, contextName, PDU):
         varBinds = v2c.apiPDU.get_varbinds(PDU)
@@ -241,6 +254,7 @@ class JsonGetNextCommandResponder(cmdrsp.NextCommandResponder):
         for idx, (oid, val) in enumerate(varBinds, 1):
             oid_tuple = tuple(oid)
 
+            # Buscar el siguiente OID servido
             next_oid = None
             for candidate in ORDERED_OIDS:
                 if candidate > oid_tuple:
@@ -251,7 +265,7 @@ class JsonGetNextCommandResponder(cmdrsp.NextCommandResponder):
                 rspVarBinds.append((oid, rfc1905.EndOfMibView()))
             else:
                 key = mib_store.oid_to_key(next_oid)
-                # --- Manejo de OIDs dinámicos --- # <-- NUEVO
+                # --- Manejo de OIDs dinámicos --- 
                 if key == 'sysUpTime':
                     value = mib_store.get_sysuptime()
                 else:
@@ -265,11 +279,12 @@ class JsonGetNextCommandResponder(cmdrsp.NextCommandResponder):
 
         self.send_varbinds(snmpEngine, stateReference, errorStatus, errorIndex, rspVarBinds)
 
+# SET: responde peticiones de escritura (solo para comunidad privada), con validaciones
 class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
     def handle_management_operation(self, snmpEngine, stateReference, contextName, PDU):
         global current_security_name
 
-        # Verificar permisos basado en securityName
+        # Verificar permisos (solo 'private-user' puede escribir)
         if current_security_name == b'public-user':
             print(f"SET rechazado: comunidad 'public' no tiene permisos de escritura")
             varBinds = v2c.apiPDU.get_varbinds(PDU)
@@ -291,13 +306,14 @@ class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
                 errorIndex = idx
                 break
 
-            # --- Comprobación de OIDs Read-Only --- #
+            # Proteger contra escritura en OIDs de solo lectura
             if key in ['sysDescr', 'sysObjectID', 'sysUpTime', 'cpuUsage']:
                 errorStatus = 17 # notWritable
                 errorIndex = idx
                 break
 
             try:
+                # Validar tipo de dato acorde con el atributo
                 if key in ['manager', 'managerEmail', 'sysContact', 'sysName', 'sysLocation']:
                     if not isinstance(val, v2c.OctetString):
                         errorStatus = 7; errorIndex = idx; break
@@ -306,7 +322,7 @@ class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
                         errorStatus = 7; errorIndex = idx; break
 
                 python_value = snmp_to_python(key, val)
-
+                # Validar rango o longitud
                 if key in ['manager', 'managerEmail', 'sysContact', 'sysName', 'sysLocation']:
                     if len(python_value) > 255:
                         errorStatus = 10; errorIndex = idx; break
@@ -316,10 +332,10 @@ class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
                 elif key == 'sysServices':
                     if not (0 <= python_value <= 127):
                         errorStatus = 10; errorIndex = idx; break
-
+                # Guardar valor
                 mib_store.data[key] = python_value
 
-                # --- Sincronizar manager y sysContact --- #
+                # Sincronizar manager y sysContact
                 if key == 'manager':
                     mib_store.data['sysContact'] = python_value
                 elif key == 'sysContact':
@@ -335,14 +351,15 @@ class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
         if errorStatus:
             rspVarBinds = [(oid, v2c.Null()) for oid, val in varBinds]
         else:
-            mib_store.save_to_json()
+            mib_store.save_to_json()     # Guardar persistente!    
 
         self.send_varbinds(snmpEngine, stateReference, errorStatus, errorIndex, rspVarBinds)
 
 # ===========================
-# TRAP and Email
+# Envío de TRAP SNMP y Email de Alarma
 # ===========================
 
+# Enviar TRAP SNMP (cuando CPU supera umbral)
 async def send_trap(cpu_usage, cpu_threshold):
     """Envía trap SNMP - versión con tuplas de OID"""
     print(f'📤 Sending TRAP: CPU {cpu_usage}% > threshold {cpu_threshold}%')
@@ -352,9 +369,9 @@ async def send_trap(cpu_usage, cpu_threshold):
     try:
         from pysnmp.proto.rfc1902 import Integer32, OctetString, ObjectIdentifier
         
-        # Definir OIDs como tuplas
+        # OID para tipo de trampa (standard)
         SNMP_TRAP_OID = (1, 3, 6, 1, 6, 3, 1, 1, 4, 1, 0)
-        TRAP_TYPE_OID = BASE_OID + (2, 1)  # cpuThresholdExceeded
+        TRAP_TYPE_OID = BASE_OID + (2, 1)  # Identificador de evento cpuThresholdExceeded
         
         errorIndication, errorStatus, errorIndex, varBinds = await send_notification(
             trapEngine,
@@ -383,6 +400,7 @@ async def send_trap(cpu_usage, cpu_threshold):
     finally:
         trapEngine.close_dispatcher()
 
+# Enviar email de alarma si CPU supera el umbral
 def send_email(cpu_usage, cpu_threshold):
     """Envía email de alarma usando la lógica de Gmail (SMTP_SSL)"""
     try:
@@ -426,7 +444,7 @@ Este es un mensaje automático del Agente SNMP.
         print(f'Error enviando email: {e}')
 
 # ===========================
-# CPU Monitoring
+# CPU Monitoring (async)
 # ===========================
 
 async def cpu_sampler(snmpEngine):
@@ -441,7 +459,7 @@ async def cpu_sampler(snmpEngine):
                 mib_store.above_threshold = True
                 print(f'\nTHRESHOLD CROSSED: CPU {cpu_usage}% > {threshold}%')
                 
-                # ✅ Ahora es async nativo
+                # Enviar alarma (TRAP y Email)
                 await send_trap(cpu_usage, threshold)
                 send_email(cpu_usage, threshold)
                 
@@ -471,12 +489,13 @@ def main():
 
     snmpEngine = engine.SnmpEngine()
 
-    # Registrar observer para capturar securityName
+    # Registrar observer para capturar securityName de cada petición
     snmpEngine.observer.register_observer(
         request_observer,
         'rfc3412.receiveMessage:request'
     )
 
+    # Configurar el transporte UDP del agente (puerto estándar SNMP: 161)
     config.add_transport(
         snmpEngine,
         udp.DOMAIN_NAME,
@@ -485,11 +504,12 @@ def main():
 
     snmpContext = context.SnmpContext(snmpEngine)
 
+    # Registrar comunidades SNMPv1/2c (public = sólo lectura, private = lectura-escritura)
     config.add_v1_system(snmpEngine, 'public-user', 'public')
     config.add_v1_system(snmpEngine, 'private-user', 'private')
 
-    # Control de Acceso (VACM)
-    # Añadir vista para el grupo MIB-II System (lectura y escritura)
+    # Control de Acceso Basado en Vistas (VACM)
+    # Añadir vistas que cubren System y nuestra rama de Empresa
     config.add_vacm_view(snmpEngine, 'read-view', 'included', (1, 3, 6, 1, 2, 1, 1), '')
     config.add_vacm_view(snmpEngine, 'write-view', 'included', (1, 3, 6, 1, 2, 1, 1), '')
 
@@ -512,7 +532,7 @@ def main():
 
     # El grupo 'public' solo tiene acceso a 'read-view' y 'notify-view'
     config.add_vacm_access(snmpEngine, 'public-group', '', 2, 'noAuthNoPriv', 'exact', 'read-view', '', 'notify-view')
-    # El grupo 'private' tiene acceso a 'read-view' y 'write-view'
+    # El grupo 'private' tiene acceso a 'read-view', 'write-view' y 'notify-view'
     config.add_vacm_access(snmpEngine, 'private-group', '', 2, 'noAuthNoPriv', 'exact', 'read-view', 'write-view', 'notify-view')
 
     # Configuración de TRAP
@@ -520,6 +540,7 @@ def main():
     #config.add_target_address(snmpEngine, 'trap-target', udp.DOMAIN_NAME, (TRAP_HOST, TRAP_PORT), 'trap-params', tagList='trap-tag')
     #config.add_notification_target(snmpEngine, 'trap-target', 'trap-params', 'trap-tag', 'trap')
 
+    # Inicializr Command Responders conoperaciones SNMP
     JsonGetCommandResponder(snmpEngine, snmpContext)
     JsonGetNextCommandResponder(snmpEngine, snmpContext)
     JsonSetCommandResponder(snmpEngine, snmpContext)
@@ -531,6 +552,7 @@ def main():
     print(f'TRAP target: {TRAP_HOST}:{TRAP_PORT}')
     print(f'SMTP server: {SMTP_SERVER}:{SMTP_PORT} (Gmail)')
 
+    # Iniciar el muestreador de CPU en segundo plano
     loop.create_task(cpu_sampler(snmpEngine))
 
     try:
