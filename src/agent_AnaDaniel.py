@@ -16,6 +16,7 @@ from pysnmp.carrier.asyncio.dgram import udp
 from pysnmp.proto.api import v2c
 
 from pysnmp.proto import rfc1902, rfc1905
+from pysnmp.proto.rfc1902 import Integer32, OctetString, ObjectIdentifier
 
 from pysnmp.hlapi.v3arch.asyncio import (
     send_notification,
@@ -25,10 +26,10 @@ from pysnmp.hlapi.v3arch.asyncio import (
     ObjectIdentity, 
     ObjectType
 )
-#
+
+# Para debug
 #from pysnmp import debug
 #debug.set_logger(debug.Debug('app'))
-#
 
 # ===========================
 # Constantes de MIB y Configuración
@@ -93,7 +94,7 @@ class MibDataStore:
             'sysServices': 72 # Servicios: Aplicación (bit 2) + End-to-End (bit 6)
         }
         self.above_threshold = False    # Indica si el uso CPU ya superó el umbral
-        self.start_time = time.time()       # Tiempo de inicio para sysUpTime
+        self.start_time = time.time()   # Tiempo de inicio para sysUpTime
         self.load_from_json()   # Cargar estado JSON
 
     # Cargar valores almacenados desde el JSON
@@ -102,7 +103,7 @@ class MibDataStore:
             try:
                 with open(JSON_FILE, 'r') as f:
                     loaded = json.load(f)
-                    # Cargar valores con defaults si no existen
+                    # Cargar valores
                     self.data['manager'] = loaded.get('manager', self.data['manager'])
                     self.data['managerEmail'] = loaded.get('managerEmail', self.data['managerEmail'])
                     self.data['cpuThreshold'] = loaded.get('cpuThreshold', self.data['cpuThreshold'])
@@ -145,7 +146,7 @@ class MibDataStore:
         elif oid == SYS_OBJECT_ID:
             return 'sysObjectID'
         elif oid == SYS_UP_TIME:
-            return 'sysUpTime' # Clave especial para valor dinámico
+            return 'sysUpTime'
         elif oid == SYS_CONTACT:
             return 'sysContact'
         elif oid == SYS_NAME:
@@ -164,6 +165,7 @@ class MibDataStore:
         elif oid == OID_CPU_THRESHOLD:
             return 'cpuThreshold'
         return None
+    
     # Calcular upTime: tiempo (en centésimas de segundo) desde arranque del agente
     def get_sysuptime(self):
         return int((time.time() - self.start_time) * 100)
@@ -283,10 +285,11 @@ class JsonGetNextCommandResponder(cmdrsp.NextCommandResponder):
 class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
     def handle_management_operation(self, snmpEngine, stateReference, contextName, PDU):
         global current_security_name
+        security_name_str = str(current_security_name)
 
         # Verificar permisos (solo 'private-user' puede escribir)
-        if current_security_name == b'public-user':
-            print(f"SET rechazado: comunidad 'public' no tiene permisos de escritura")
+        if current_security_name != b'private-user':
+            print(f"SET rechazado: '{security_name_str}' no tiene permisos de escritura")
             varBinds = v2c.apiPDU.get_varbinds(PDU)
             rspVarBinds = [(oid, v2c.Null()) for oid, val in varBinds]
             self.send_varbinds(snmpEngine, stateReference, 6, 1, rspVarBinds)
@@ -351,7 +354,7 @@ class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
         if errorStatus:
             rspVarBinds = [(oid, v2c.Null()) for oid, val in varBinds]
         else:
-            mib_store.save_to_json()     # Guardar persistente!    
+            mib_store.save_to_json()     # Guardar persistente 
 
         self.send_varbinds(snmpEngine, stateReference, errorStatus, errorIndex, rspVarBinds)
 
@@ -362,12 +365,11 @@ class JsonSetCommandResponder(cmdrsp.SetCommandResponder):
 # Enviar TRAP SNMP (cuando CPU supera umbral)
 async def send_trap(cpu_usage, cpu_threshold):
     """Envía trap SNMP - versión con tuplas de OID"""
-    print(f'📤 Sending TRAP: CPU {cpu_usage}% > threshold {cpu_threshold}%')
+    print(f'Sending TRAP: CPU {cpu_usage}% > threshold {cpu_threshold}%')
     
     trapEngine = engine.SnmpEngine()
     
     try:
-        from pysnmp.proto.rfc1902 import Integer32, OctetString, ObjectIdentifier
         
         # OID para tipo de trampa (standard)
         SNMP_TRAP_OID = (1, 3, 6, 1, 6, 3, 1, 1, 4, 1, 0)
@@ -379,7 +381,7 @@ async def send_trap(cpu_usage, cpu_threshold):
             await UdpTransportTarget.create((TRAP_HOST, TRAP_PORT)),
             ContextData(),
             'trap',
-            # Usar tuplas directamente
+            # Tuplas directamente
             ObjectType(ObjectIdentity(SNMP_TRAP_OID), ObjectIdentifier(TRAP_TYPE_OID)),
             ObjectType(ObjectIdentity(OID_CPU_USAGE), Integer32(cpu_usage)),
             ObjectType(ObjectIdentity(OID_CPU_THRESHOLD), Integer32(cpu_threshold)),
@@ -402,7 +404,7 @@ async def send_trap(cpu_usage, cpu_threshold):
 
 # Enviar email de alarma si CPU supera el umbral
 def send_email(cpu_usage, cpu_threshold):
-    """Envía email de alarma usando la lógica de Gmail (SMTP_SSL)"""
+    """Envía email de alarma con Gmail (SMTP_SSL)"""
     try:
         recipient = mib_store.data['managerEmail']
         manager = mib_store.data['manager']
@@ -433,7 +435,7 @@ Este es un mensaje automático del Agente SNMP.
 
         msg.attach(MIMEText(body, 'plain'))
 
-        # Usar SMTP_SSL y login, como en alarm_modrego.py
+        # SMTP_SSL y login
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
             server.login(EMAIL_SENDER, EMAIL_PASSWORD)
             server.sendmail(EMAIL_SENDER, [recipient], msg.as_string())
@@ -459,7 +461,7 @@ async def cpu_sampler(snmpEngine):
                 mib_store.above_threshold = True
                 print(f'\nTHRESHOLD CROSSED: CPU {cpu_usage}% > {threshold}%')
                 
-                # Enviar alarma (TRAP y Email)
+                # Enviar alarma (TRAP & Email)
                 await send_trap(cpu_usage, threshold)
                 send_email(cpu_usage, threshold)
                 
@@ -480,7 +482,6 @@ async def cpu_sampler(snmpEngine):
 # ===========================
 
 def main():
-    print('--- PRUEBA 1: SCRIPT INICIADO CORRECTAMENTE ---')
     print('=== Mini SNMP Agent Starting ===')
     print(f'Base OID: {".".join(map(str, BASE_OID))}')
 
@@ -514,17 +515,17 @@ def main():
     config.add_vacm_view(snmpEngine, 'write-view', 'included', (1, 3, 6, 1, 2, 1, 1), '')
 
     # Añadir vista para nuestra MIB personalizada (lectura y escritura)
-    #config.add_vacm_view(snmpEngine, 'read-view', 'included', BASE_OID, '')
-    #config.add_vacm_view(snmpEngine, 'write-view', 'included', BASE_OID, '')
+    config.add_vacm_view(snmpEngine, 'read-view', 'included', BASE_OID, '')
+    config.add_vacm_view(snmpEngine, 'write-view', 'included', BASE_OID, '')
 
     # Añadir vista que incluya los OIDs que pueden ir en una notificación
-    # config.add_vacm_view(snmpEngine, 'notify-view', 'included', (1, 3, 6, 1, 2, 1, 1), '')
-    # config.add_vacm_view(snmpEngine, 'notify-view', 'included', BASE_OID, '')
+    config.add_vacm_view(snmpEngine, 'notify-view', 'included', (1, 3, 6, 1, 2, 1, 1), '')
+    config.add_vacm_view(snmpEngine, 'notify-view', 'included', BASE_OID, '')
 
     # Vista "todo" que incluye internet (1.3.6.1)
-    config.add_vacm_view(snmpEngine, 'read-view', 'included', (1, 3, 6, 1), '')
-    config.add_vacm_view(snmpEngine, 'write-view', 'included', (1, 3, 6, 1), '')
-    config.add_vacm_view(snmpEngine, 'notify-view', 'included', (1, 3, 6, 1), '')
+    # config.add_vacm_view(snmpEngine, 'read-view', 'included', (1, 3, 6, 1), '')
+    # config.add_vacm_view(snmpEngine, 'write-view', 'included', (1, 3, 6, 1), '')
+    # config.add_vacm_view(snmpEngine, 'notify-view', 'included', (1, 3, 6, 1), '')
 
     # Configurar grupos y accesos
     config.add_vacm_group(snmpEngine, 'public-group', 2, 'public-user')
@@ -535,12 +536,7 @@ def main():
     # El grupo 'private' tiene acceso a 'read-view', 'write-view' y 'notify-view'
     config.add_vacm_access(snmpEngine, 'private-group', '', 2, 'noAuthNoPriv', 'exact', 'read-view', 'write-view', 'notify-view')
 
-    # Configuración de TRAP
-    #config.add_target_parameters(snmpEngine, 'trap-params', 'private-user', 'noAuthNoPriv', 1)
-    #config.add_target_address(snmpEngine, 'trap-target', udp.DOMAIN_NAME, (TRAP_HOST, TRAP_PORT), 'trap-params', tagList='trap-tag')
-    #config.add_notification_target(snmpEngine, 'trap-target', 'trap-params', 'trap-tag', 'trap')
-
-    # Inicializr Command Responders conoperaciones SNMP
+    # Inicializr Command Responders con operaciones SNMP
     JsonGetCommandResponder(snmpEngine, snmpContext)
     JsonGetNextCommandResponder(snmpEngine, snmpContext)
     JsonSetCommandResponder(snmpEngine, snmpContext)
