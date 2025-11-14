@@ -28,6 +28,8 @@ build/
 
 #Instancia de la MIB
 mib_state.json
+MYAGENT-MIB.cds
+MYAGENT-MIB.cmi
 
 #Test files
 README_Testing.md
