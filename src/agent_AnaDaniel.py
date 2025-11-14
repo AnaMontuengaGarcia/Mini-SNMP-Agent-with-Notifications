@@ -547,7 +547,6 @@ async def main():
     JsonGetCommandResponder(snmpEngine, snmpContext)
     JsonGetNextCommandResponder(snmpEngine, snmpContext)
     JsonSetCommandResponder(snmpEngine, snmpContext)
-    cmdrsp.BulkCommandResponder(snmpEngine, snmpContext)
 
     print('Agent listening on UDP port 161')
     print('Serving OIDs from MIB-II System (1.3.6.1.2.1.1) and Enterprise (1.3.6.1.4.1.28308)')
