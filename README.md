@@ -166,9 +166,7 @@ SNMP Agent Test Suite - Fully Automated
 ```
 
 Se abrirá una ventana de terminal separada mostrando los logs del agente en tiempo real. Esta ventana puede cerrarse sin afectar los tests.
-```
 
-```markdown
 ## Limitaciones y Consideraciones para Producción
 
 ⚠️ **Este es un agente de demostración. Para uso en producción:**
