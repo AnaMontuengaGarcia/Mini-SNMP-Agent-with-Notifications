@@ -32,7 +32,7 @@ Un agente SNMPv2c ligero implementado en Python que monitoriza el uso de CPU y e
 
 ## Requisitos
 
-**Python**: 3.13.x (⚠️ No compatible con Python 3.14+)
+**Python**: 3.12/13.x (⚠️ No compatible con Python 3.14+)
 
 ```bash
 pip install pysnmp psutil
@@ -122,6 +122,51 @@ snmpset -v2c -c private localhost 1.3.6.1.4.1.28308.1.4.0 i 5
 ├── agent.py           # Script principal del agente
 ├── mib_state.json    # Configuración persistente (auto-generado)
 └── MYAGENT-MIB.txt   # Archivo de definición MIB
+```
+
+```markdown
+## Ejecutar la Suite de Tests
+
+El proyecto incluye una suite de tests completamente automatizada que valida toda la funcionalidad del agente SNMP.
+
+### Requisitos Previos
+
+- Entorno virtual de Python con dependencias instaladas
+- Privilegios root/sudo (requeridos para los puertos 161 y 162)
+
+### Ejecución Rápida
+
+```
+cd src
+sudo python test_agent.py
+```
+
+### Qué Hace el Test
+
+La suite de tests automáticamente:
+- ✅ Inicia el agente SNMP en una terminal separada
+- ✅ Prueba todas las operaciones SNMP (GET, GETNEXT, WALK, SET)
+- ✅ Valida el control de acceso y manejo de errores
+- ✅ Prueba el monitoreo y muestreo de CPU
+- ✅ Verifica la persistencia de datos tras reiniciar el agente
+- ✅ Prueba la generación de traps SNMP con simulación de carga de CPU
+- ✅ Muestra los logs del agente en tiempo real en una ventana dedicada
+- ✅ Limpia automáticamente al finalizar
+
+### Resultado Esperado
+
+```
+============================================================
+SNMP Agent Test Suite - Fully Automated
+============================================================
+...
+┌─────────────────────────────────────────┐
+│  TOTAL:                 ✓ 19/19         │
+│  SUCCESS RATE:          100%            │
+└─────────────────────────────────────────┘
+```
+
+Se abrirá una ventana de terminal separada mostrando los logs del agente en tiempo real. Esta ventana puede cerrarse sin afectar los tests.
 ```
 
 ## Limitaciones y Consideraciones para Producción
