@@ -124,7 +124,6 @@ snmpset -v2c -c private localhost 1.3.6.1.4.1.28308.1.4.0 i 5
 └── MYAGENT-MIB.txt   # Archivo de definición MIB
 ```
 
-```markdown
 ## Ejecutar la Suite de Tests
 
 El proyecto incluye una suite de tests completamente automatizada que valida toda la funcionalidad del agente SNMP.
