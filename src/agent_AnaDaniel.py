@@ -91,7 +91,7 @@ class MibDataStore:
             'sysContact': 'NetworkAdmin', # Se sincronizará con 'manager'
             'sysName': socket.gethostname(),
             'sysLocation': 'Lab System (Settable)',
-            'sysServices': 72 # Servicios: Aplicación (bit 2) + End-to-End (bit 6)
+            'sysServices': 72 # Servicios: End-to-End/Capa 4 (8) + Aplicación/Capa 7 (64)
         }
         self.above_threshold = False    # Indica si el uso CPU ya superó el umbral
         self.start_time = time.time()   # Tiempo de inicio para sysUpTime
@@ -450,6 +450,10 @@ Este es un mensaje automático del Agente SNMP.
 
         print(f'Email de alarma de CPU enviado a {recipient}')
 
+    except aiosmtplib.errors.SMTPAuthenticationError as e:
+        print("❌ Error autenticación SMTP: Verifica usuario y contraseña.")
+        print("Más info: https://support.google.com/mail/?p=BadCredentials")
+        
     except Exception as e:
         print(f'❌ Error enviando email: {e}')
         import traceback
@@ -461,9 +465,11 @@ Este es un mensaje automático del Agente SNMP.
 
 async def cpu_sampler(snmpEngine):
     print('CPU sampler started')
+    psutil.cpu_percent(interval=None)  # Warm-up (la primera vez siempre da 0)
+    await asyncio.sleep(0.1)           # Espera breve para valor real
     while True:
         try:
-            cpu_usage = int(psutil.cpu_percent(interval=1))
+            cpu_usage = int(psutil.cpu_percent(interval=None))
             mib_store.data['cpuUsage'] = cpu_usage
             threshold = mib_store.data['cpuThreshold']
 
