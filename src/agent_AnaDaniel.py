@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 import psutil
-import smtplib
+import aiosmtplib
 import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -67,8 +67,8 @@ TRAP_PORT = 162
 # ===========================
 # Configuración de Email (Gmail)
 # ===========================
-EMAIL_SENDER = "xxxxx@gmail.com"
-EMAIL_PASSWORD = "xxxxxxxxxxxxxxxx"  # Contraseña de aplicación (16 dígitos)
+EMAIL_SENDER = "xxxxxxxxxxx@gmail.com"
+EMAIL_PASSWORD = "xxxxxxxxxxxxxxx"  # Contraseña de aplicación (16 dígitos)
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
 
@@ -235,7 +235,7 @@ class JsonGetCommandResponder(cmdrsp.GetCommandResponder):
                 # cpuUsage es actualizado por el sampler, así que se lee de .data
                 else:
                     value = mib_store.data[key]
-                # --- Fin manejo dinámico ---
+                # --- Fin manejo dinámico --- #
 
                 snmp_value = python_to_snmp(key, value)
                 rspVarBinds.append((oid, snmp_value))
@@ -406,7 +406,7 @@ async def send_trap(cpu_usage, cpu_threshold):
         trapEngine.close_dispatcher()
 
 # Enviar email de alarma si CPU supera el umbral
-def send_email(cpu_usage, cpu_threshold):
+async def send_email(cpu_usage, cpu_threshold):
     """Envía email de alarma con Gmail (SMTP_SSL)"""
     try:
         recipient = mib_store.data['managerEmail']
@@ -438,15 +438,22 @@ Este es un mensaje automático del Agente SNMP.
 
         msg.attach(MIMEText(body, 'plain'))
 
-        # SMTP_SSL y login
-        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
-            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-            server.sendmail(EMAIL_SENDER, [recipient], msg.as_string())
+        # Envío asíncrono
+        await aiosmtplib.send(
+            msg,
+            hostname=SMTP_SERVER,
+            port=SMTP_PORT,
+            username=EMAIL_SENDER,
+            password=EMAIL_PASSWORD,
+            use_tls=True,
+        )
 
         print(f'Email de alarma de CPU enviado a {recipient}')
 
     except Exception as e:
-        print(f'Error enviando email: {e}')
+        print(f'❌ Error enviando email: {e}')
+        import traceback
+        traceback.print_exc()
 
 # ===========================
 # CPU Monitoring (async)
@@ -466,7 +473,7 @@ async def cpu_sampler(snmpEngine):
                 
                 # Enviar alarma (TRAP & Email)
                 await send_trap(cpu_usage, threshold)
-                send_email(cpu_usage, threshold)
+                await send_email(cpu_usage, threshold)
                 
             elif cpu_usage <= threshold and mib_store.above_threshold:
                 mib_store.above_threshold = False

@@ -675,6 +675,15 @@ async def test_trap_sending():
                 print('✗ No trap data')
                 success = False
                 
+            if success:
+                print('  ℹ️  Trap received successfully')
+                print('  ℹ️  Email was sent but may take 10-60 seconds to arrive')
+                print('  ℹ️  Check your inbox after the test completes')
+                print('  ⏳ Waiting 10 seconds for email delivery...')
+                await asyncio.sleep(10)  # Dar tiempo a Gmail para entregar
+                print('  ✓ Wait complete - check your email inbox now')
+
+
         except asyncio.TimeoutError:
             print('✗ Timeout: no trap received within 15 seconds')
             print('  CPU load may not have been sufficient')
@@ -780,7 +789,7 @@ async def main():
         # 2.7.3 - SET success
         print('\n--- SET Tests - Success (2.7.3) ---')
         await test_set('1.3.6.1.4.1.28308.1.1.0', OctetString('Alice'), True, 'manager')
-        await test_set('1.3.6.1.4.1.28308.1.2.0', OctetString('alice@example.com'), True, 'managerEmail')
+        await test_set('1.3.6.1.4.1.28308.1.2.0', OctetString('analumontuenga@gmail.com'), True, 'managerEmail')
         await test_set('1.3.6.1.4.1.28308.1.4.0', Integer(75), True, 'cpuThreshold')
         
         # 2.7.4 - SET failures
